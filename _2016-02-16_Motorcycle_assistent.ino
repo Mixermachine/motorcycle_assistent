@@ -75,6 +75,7 @@ byte DS18B20addr[8];
 DS3231 DS3131rtc(A4,A5); // first SDA_PIN, second SCL_PIN on DS3231
 
 //* chain oiler timings
+boolean chain_oiler_active = true;
 unsigned long chain_oiler_wait = 600000;  // unsigned long else overflow. standard 10 minutes (600000 ms)
 unsigned int chain_oiler_pump_time = 100;  // how long the pump should run in one intervall
 unsigned long timeSinceChainOiler = 0;
@@ -122,15 +123,22 @@ void loop() {
 // chain oiler routine
 if(timeSinceChainOiler + chain_oiler_wait <= millis()) {
   timeSinceChainOiler = millis();
-  if (readVoltage() >= chain_oiler_trigger_voltage) {
-    triggerChainOiler(chain_oiler_pump_time);
+  if ( chain_oiler_active) {
+    if (readVoltage() >= chain_oiler_trigger_voltage) {
+      triggerChainOiler(chain_oiler_pump_time);
+    } else {
+      if (INFO_LOG >= GBL_LOGLEVEL) {
+        Serial.print(F("I: Chain oiler voltage ("));
+        Serial.print(readVoltage());
+        Serial.println(F(") to low"));
+      }
+    }
   } else {
     if (INFO_LOG >= GBL_LOGLEVEL) {
-      Serial.print(F("I: Chain oiler, voltage ("));
-      Serial.print(readVoltage());
-      Serial.println(F(") to low"));
+      Serial.print(F("I: Chain oiler timer, but chain oiler is deactivated"));
     }
-  }
+  } 
+  
 }
 
 // main display update routine
@@ -260,26 +268,31 @@ if (millis() - timeSinceMainButtonCheck >= INTERVAL_MAIN_BUTTON_CHECK) {
 // So, not that pretty stuff here, but it's functional
 void enterMenuPage() {
   boolean exitMenu = false;
-
-  // 0 first page
-  // 10 chain oiler
-  // 20 clock 
-  byte menuTyp = 0;
-  byte menu_item_count = 3;
-  byte menu_Pointer_Location = 0;
-
-
+  
   // Menu defines.
   // Not at the top, because a user does not really needs to change this values
+  // menuTyps
+  // 0 first page
+  #define MENU_FIRST_PAGE_ITEMS_COUNT 3
+  // 10 chain oiler
+  #define MENU_CHAIN_OILER_ITEMS_COUNT 6
+  // 20 clock 
+  #define MENU_CLOCK_ITEMS_COUNT 3
+
+  byte menuTyp = 0;
+
   #define MENU_POINTER_GAB 8
   #define MENU_ENTRY_HEIGHT 8
   #define MENU_FIRST_ENTRY 8
   #define MENU_OFFSET_MOVE_TRIGGER 2  // defines when the menu should start to shift the text upwards
 
+  byte menu_item_count = 3;
+  byte menu_Pointer_Location = 0;
   byte menuOffset = 0;  // moves the hole menu up to display new stuff. Dealing with the small display
 
 
-  // Write a reminder message, to not use the menu while driving
+
+  // Print a reminder message, to not use the menu while driving
   display.clearDisplay();
   display.dim(false);
 
@@ -293,13 +306,16 @@ void enterMenuPage() {
 
   while(analogRead(BUTTON_1) >= BUTTON_TRIGGER_VALUE) {} // wait for user to release button
 
-  // printig the main menu in a loop and checking buttons
+  // printig the menu in a loop and handling the button
   while(!exitMenu){
 
   // printing section
+
+  display.clearDisplay();
+  
     switch(menuTyp) {
       case 0:   // main menu      
-      display.clearDisplay();
+      menu_item_count = MENU_FIRST_PAGE_ITEMS_COUNT;  // dealing with the menu hops
       // Headline
       display.setCursor(0,0 - menuOffset);
       display.setTextSize(1);
@@ -319,27 +335,52 @@ void enterMenuPage() {
       break;
 
       case 10:  // chain oiler menu
-      display.clearDisplay();
+      menu_item_count = MENU_CHAIN_OILER_ITEMS_COUNT;
 
       // Headline
       display.setCursor(0,0 - menuOffset);
       display.setTextSize(1);
       display.print(F("Kettenoeler"));
   
-      display.setCursor(84,0);
+      display.setCursor(96,0);  // no menuOffset here. We need to see what we change
       display.print(chain_oiler_wait/1000);
-      display.print('s');     
+      display.print('s');
+
+      display.setCursor(96,8);
+      display.print(chain_oiler_pump_time);
+      display.print(F("ms"));
   
        // Menu points
       display.setTextSize(1);
       display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 0 - menuOffset);
-      display.print(F("Erhoehen (30s)"));
-    
+      display.print(F("Status:"));
+      if(chain_oiler_active) {
+        display.print(F("aktiv"));
+      } else {
+        display.print(F("inaktiv"));
+      }
+      
       display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 1 - menuOffset);
-      display.print(F("Absenken (30s)"));
+      display.print(F("Wartezeit +30s"));
     
       display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 2 - menuOffset);
+      display.print(F("Wartezeit -30s"));
+
+      display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 3 - menuOffset);
+      display.print(F("Interval +10ms"));
+
+      display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 4 - menuOffset);
+      display.print(F("Interval -10ms"));
+    
+      display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 5 - menuOffset);
       display.print(F("Zurueck"));
+      break;
+
+      case 20:
+      // Headline
+
+      display.setCursor(0,0 - menuOffset);
+      
       break;
     }
 
@@ -358,12 +399,11 @@ void enterMenuPage() {
       switch(menuTyp) {
         case 0:   // main menu
         switch(menu_Pointer_Location) {
-          case 0:
+          case 0:  // enter chain oiler menu
           menuTyp = 10;
-          menu_item_count = 3;
           menu_Pointer_Location = 0;
           break;
-          case 1:
+          case 1:  // enter clock menu
           break;
           case 2:
           exitMenu = true;
@@ -374,14 +414,30 @@ void enterMenuPage() {
         case 10:   // chain oiler menu
         switch(menu_Pointer_Location) {
           case 0:
+          if(chain_oiler_active) {
+            chain_oiler_active = false;
+          } else {
+            chain_oiler_active = true;
+          }
+          break;
+          case 1:  // inc wait time
           chain_oiler_wait += 30000;
-          menu_item_count = 3;
           break;
-          case 1:
+          case 2:  // dec wait time
+          if(chain_oiler_wait > 30000) {
+            chain_oiler_wait -= 30000;
+          }
           break;
-          case 2:
+          case 3:  // inc pump time
+          chain_oiler_pump_time += 10;
+          break;
+          case 4:  // dec pump time
+          if(chain_oiler_pump_time > 10) {
+            chain_oiler_pump_time -= 10;
+          }
+          break;
+          case 5:  // back to menu
           menuTyp = 0;
-          menu_item_count = 3;
           menu_Pointer_Location = 0;
           break;
         }     
@@ -409,7 +465,8 @@ void enterMenuPage() {
   display.clearDisplay();
   display.setCursor(0,0);
   display.setTextSize(2);
-  display.print(F("Komme gut\nan dein Ziel"));
+  display.print(F("Gute\nFahrt"));
+  
 
   display.display();
 
