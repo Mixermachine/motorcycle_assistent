@@ -462,7 +462,10 @@ void enterMenuPage() {
 
         case 20:  // clock menu
           switch(menu_Pointer_Location) {
-            
+            case 0:
+            break;
+            case 1:
+            break;
           }
         break;
       }
