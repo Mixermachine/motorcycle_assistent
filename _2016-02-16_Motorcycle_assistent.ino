@@ -341,7 +341,8 @@ void enterMenuPage() {
       display.setCursor(0,0 - menuOffset);
       display.setTextSize(1);
       display.print(F("Kettenoeler"));
-  
+
+      // display wait and pump time on the right side
       display.setCursor(96,0);  // no menuOffset here. We need to see what we change
       display.print(chain_oiler_wait/1000);
       display.print('s');
@@ -376,10 +377,24 @@ void enterMenuPage() {
       display.print(F("Zurueck"));
       break;
 
-      case 20:
+      case 20:  // clock menu
+      menu_item_count = MENU_CLOCK_ITEMS_COUNT;
+      
       // Headline
-
       display.setCursor(0,0 - menuOffset);
+      display.print(F("Uhrzeit"));
+
+      // display time on the right side. Horizontal
+      String tempTimeString = DS3131rtc.getTimeStr();
+      display.setCursor(100,8);
+      display.print(tempTimeString.substring(0,2));
+      display.print('H');
+      display.setCursor(100,16);
+      display.print(tempTimeString.substring(3,5));
+      display.print('M');
+      display.setCursor(100,24);
+      display.print(tempTimeString.substring(6));
+      display.print('S');
       
       break;
     }
@@ -404,6 +419,8 @@ void enterMenuPage() {
           menu_Pointer_Location = 0;
           break;
           case 1:  // enter clock menu
+          menuTyp = 20;
+          menu_Pointer_Location = 0;
           break;
           case 2:
           exitMenu = true;
@@ -440,7 +457,13 @@ void enterMenuPage() {
           menuTyp = 0;
           menu_Pointer_Location = 0;
           break;
-        }     
+        }
+        break;
+
+        case 20:  // clock menu
+          switch(menu_Pointer_Location) {
+            
+          }
         break;
       }
 
