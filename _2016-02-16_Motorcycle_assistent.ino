@@ -44,12 +44,6 @@ Adafruit_SSD1306 display(0); // the value is not important
 #define CHAIN_OILER_PIN 6
 //*
 
-//* define for the menu
-#define MENU_POINTER_GAB 8
-#define MENU_ENTRY_HEIGHT 8
-#define MENU_FIRST_ENTRY 10
-//
-
 //* Logsettings
 #define GBL_LOGLEVEL 0
 #define VERBOUS_LOG 0
@@ -225,7 +219,7 @@ if (millis() - timeSinceMainButtonCheck >= INTERVAL_MAIN_BUTTON_CHECK) {
       if(INFO_LOG >= GBL_LOGLEVEL) {
         Serial.println(F("I: Entering Menu"));
       }
-      enterFirstMenuPage();
+      enterMenuPage();
       mainButtonCounter= 0;  // resseting the counter
     }
     
@@ -258,21 +252,34 @@ if (millis() - timeSinceMainButtonCheck >= INTERVAL_MAIN_BUTTON_CHECK) {
 
 }
 
-// MAIN MENU TASK
+// MENU TASK
 // this displays the menu for the user
 // Nothing else will and should happen if the user is in the menu.
-
-void enterFirstMenuPage() {
+// Everything is packed into one methode to save space in RAM and Flash
+// It takes quite a amount of extra stuff to draw and control the menu
+// So, not that pretty stuff here, but it's functional
+void enterMenuPage() {
   boolean exitMenu = false;
 
+  // 0 first page
+  // 10 chain oiler
+  // 20 clock 
+  byte menuTyp = 0;
+  byte menu_item_count = 3;
+  byte menu_Pointer_Location = 0;
+
+
+  // Menu defines.
+  // Not at the top, because a user does not really needs to change this values
   #define MENU_POINTER_GAB 8
   #define MENU_ENTRY_HEIGHT 8
   #define MENU_FIRST_ENTRY 8
-  #define MENU_ITEMS_COUNT 3
-  byte menuPointerLocation = 0;
+  #define MENU_OFFSET_MOVE_TRIGGER 2  // defines when the menu should start to shift the text upwards
 
   byte menuOffset = 0;  // moves the hole menu up to display new stuff. Dealing with the small display
-  
+
+
+  // Write a reminder message, to not use the menu while driving
   display.clearDisplay();
   display.dim(false);
 
@@ -288,60 +295,117 @@ void enterFirstMenuPage() {
 
   // printig the main menu in a loop and checking buttons
   while(!exitMenu){
-    display.clearDisplay();
-    // Headline
-    display.setCursor(0,0 - menuOffset);
-    display.setTextSize(1);
-    display.println(F("Hauptmenue"));
-  
-    // Menu points
-    display.setTextSize(1);
-    display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 0 - menuOffset);
-    display.print(F("Kettenoeler"));
-  
-    display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 1 - menuOffset);
-    display.print(F("Uhrzeit"));
-  
-    display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 2 - menuOffset);
-    display.print(F("Zurueck"));
 
-    display.setCursor(0, MENU_FIRST_ENTRY + menuPointerLocation * MENU_ENTRY_HEIGHT - menuOffset);
-    display.print((char)175);
-  
-    display.display();
+  // printing section
+    switch(menuTyp) {
+      case 0:   // main menu      
+      display.clearDisplay();
+      // Headline
+      display.setCursor(0,0 - menuOffset);
+      display.setTextSize(1);
+      display.println(F("Hauptmenue"));
+    
+      // Menu points
+      display.setTextSize(1);
+      display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 0 - menuOffset);
+      display.print(F("Kettenoeler"));
+    
+      display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 1 - menuOffset);
+      display.print(F("Uhrzeit"));
+    
+      display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 2 - menuOffset);
+      display.print(F("Zurueck"));
+ 
+      break;
 
-    unsigned int button_1_hold = getButtonHoldTime(BUTTON_1);
-    // reusing the predefined value for the button long press trigger (100ms * 10ms) = 1000 ms
-    if(button_1_hold >= INTERVAL_MAIN_BUTTON_CHECK * MAIN_BUTTON_COUNTER_TRIGGER) {
-      switch(menuPointerLocation) {
-        case 0:
-        enterChainOilerMenuPage();
-        break;
-        case 1:
-        break;
-        case 2:
-        exitMenu = true;
-        break;
-        
-      }
-    } else if (button_1_hold >= 50) {  // check for a small click. Forward the menuPointer
-      menuPointerLocation++;
-      if (menuPointerLocation >= MENU_ITEMS_COUNT){  // check if the menuPointer is over the actual count of the menuItems
-        menuPointerLocation = 0;     // keep in mind that count starts at 1, but the menuPointerLocation starts at 0
-      }
-      Serial.println(menuPointerLocation);
-      
-    } else {
-      //Serial.println(button_1_hold);
+      case 10:  // chain oiler menu
+      display.clearDisplay();
+
+      // Headline
+      display.setCursor(0,0 - menuOffset);
+      display.setTextSize(1);
+      display.print(F("Kettenoeler"));
+  
+      display.setCursor(84,0);
+      display.print(chain_oiler_wait/1000);
+      display.print('s');     
+  
+       // Menu points
+      display.setTextSize(1);
+      display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 0 - menuOffset);
+      display.print(F("Erhoehen (30s)"));
+    
+      display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 1 - menuOffset);
+      display.print(F("Absenken (30s)"));
+    
+      display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 2 - menuOffset);
+      display.print(F("Zurueck"));
+      break;
     }
 
-    if (menuPointerLocation >= 2) {  // calculating menuOffset
-        menuOffset = (menuPointerLocation - 1) *MENU_ENTRY_HEIGHT;
+    // print the menu pointer
+    display.setCursor(0, MENU_FIRST_ENTRY + menu_Pointer_Location * MENU_ENTRY_HEIGHT - menuOffset);
+    display.print((char)175);
+
+    display.display();
+
+  // action section
+  // get the input from the user
+    unsigned int button_1_hold = getButtonHoldTime(BUTTON_1);
+    // first find out if the button was a long press
+    // reusing the predefined value for the button long press trigger (100ms * 10ms) = 1000 ms
+    if(button_1_hold >= INTERVAL_MAIN_BUTTON_CHECK * MAIN_BUTTON_COUNTER_TRIGGER) {
+      switch(menuTyp) {
+        case 0:   // main menu
+        switch(menu_Pointer_Location) {
+          case 0:
+          menuTyp = 10;
+          menu_item_count = 3;
+          menu_Pointer_Location = 0;
+          break;
+          case 1:
+          break;
+          case 2:
+          exitMenu = true;
+          break;
+        }        
+        break;
+
+        case 10:   // chain oiler menu
+        switch(menu_Pointer_Location) {
+          case 0:
+          chain_oiler_wait += 30000;
+          menu_item_count = 3;
+          break;
+          case 1:
+          break;
+          case 2:
+          menuTyp = 0;
+          menu_item_count = 3;
+          menu_Pointer_Location = 0;
+          break;
+        }     
+        break;
+      }
+
+      // else check for a short press
+    } else if (button_1_hold >= 50) {
+      menu_Pointer_Location++;    // increase the menupointer
+      if (menu_Pointer_Location >= menu_item_count){  // check if the menuPointer is over the actual count of the menuItems
+        // keep in mind that "human" counting starts at 1, but the menu_Pointer_Location starts at 0
+        menu_Pointer_Location = 0;     
+      }
+    }
+
+    // calculate the menuOffset to move the complete menu upwards, showing new stuff at the buttom
+    if (menu_Pointer_Location >= MENU_OFFSET_MOVE_TRIGGER) {
+        menuOffset = (menu_Pointer_Location - 1) *MENU_ENTRY_HEIGHT;
     } else {
       menuOffset = 0;
     }
   }
 
+  // display a good bye message
   display.clearDisplay();
   display.setCursor(0,0);
   display.setTextSize(2);
@@ -352,46 +416,11 @@ void enterFirstMenuPage() {
   while(analogRead(BUTTON_1) >= BUTTON_TRIGGER_VALUE) { } // waiting for the user to release the button
 }
 
-void enterChainOilerMenuPage() {
-  boolean exitChainOilerMenu = false;
-
-  byte menuChainOilerPointerLocation = 0;
-
-  while (!exitChainOilerMenu) {
-    display.clearDisplay();
-
-    // Headline
-    display.setCursor(0,0);
-    display.setTextSize(1);
-    display.print(F("Kettenoeler"));
-
-    display.setCursor(84,0);
-    display.print(chain_oiler_wait/1000);
-    display.print('s');
-
-    
-
-     // Menu points
-    display.setTextSize(1);
-    display.setCursor(MENU_POINTER_GAB,9);
-    display.print(F("Erhoehen (30s)"));
-  
-    display.setCursor(MENU_POINTER_GAB,17);
-    display.print(F("Absenken (30s)"));
-  
-    display.setCursor(MENU_POINTER_GAB,25);
-    display.print(F("Zurueck"));
-
-    display.display();
-  }
-  
-}
-
 // READ TEMPERATUR TASK
 // adapted from https://edwardmallon.wordpress.com/2014/03/12/using-a-ds18b20-temp-sensor-without-a-dedicated-library/
 // this version does NOT work with the parasite mod. Big benefit here: no delay
-// reduced code to a minimum. No options. 
-// Just read the value and convert it to float. For what do we need Dalas again ;)?
+// reduced code to a minimum. No options.
+// Just read the value and convert it to float. For what do we need the Dalas lib again ;)?
 float readTemperatur() {
   byte data[12];
   DS18B20ds.reset();
