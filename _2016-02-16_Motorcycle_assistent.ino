@@ -15,6 +15,10 @@
 #include <DS3231.h>
 //*
 
+// include for EEPROM memory
+#include <EEPROM.h>
+//*
+
 //**** DEFINES
 //* define for Screen
 //#define OLED_RESET 4 // not used here/ nicht genutzt bei diesem Display
@@ -42,21 +46,34 @@ Adafruit_SSD1306 display(0); // the value is not important
 
 //* define for the CHAIN_OILER_PIN
 #define CHAIN_OILER_PIN 6
+// standard values for chain_oiler
+#define STD_CHAIN_OILER_ACTIVE true
+#define STD_CHAIN_OILER_WAIT 600000
+#define STD_CHAIN_OILER_PUMP 100
+#define STD_CHAIN_OILER_VOLTAGE 13.2
 //*
 
-//* Logsettings
-#define GBL_LOGLEVEL 0
+//* define for the logs
+#define GBL_LOGLEVEL 0   // set log level here
 #define VERBOUS_LOG 0
 #define INFO_LOG 1
 #define WARNING_LOG 2
 #define ERROR_LOG 3
 //*
 
+//* defines for the memory management
+#define RECORD_PRESENT_ADDR 0  // 1 byte for a byte
+#define RECORD_PRESENT_VALUE_0 10 // this works as a versioning control for compactibably 
+#define RECORD_PRESENT_VALUE_1 10 // Later versions might changed this number
+
+#define RECORD_CHAIN_OILER_ADDR 2     // 7 bytes to save
+//*
+
 //**** GLOBAL VARIABLES
 //* timing variables
 // Main display refresh
 unsigned long timeSinceMainDisplayRefresh = 0;  //
-#define intervalMainDisplayRefresh 1000 // to keep it together, define is placed here. Using define to save ram
+#define INTERVAL_MAIN_DISPLAY_REFRESH 1000 // to keep it together, define is placed here. Using define to save ram
 
 // Main button check
 // The check is triggered every 100 ms and counts up a value if the button is pressed
@@ -75,11 +92,11 @@ byte DS18B20addr[8];
 DS3231 DS3131rtc(A4,A5); // first SDA_PIN, second SCL_PIN on DS3231
 
 //* chain oiler timings
-boolean chain_oiler_active = true;
-unsigned long chain_oiler_wait = 600000;  // unsigned long else overflow. standard 10 minutes (600000 ms)
-unsigned int chain_oiler_pump_time = 100;  // how long the pump should run in one intervall
+boolean chain_oiler_active = STD_CHAIN_OILER_ACTIVE;
+unsigned long chain_oiler_wait = STD_CHAIN_OILER_WAIT;  // unsigned long else overflow. standard 10 minutes (600000 ms)
+unsigned int chain_oiler_pump = STD_CHAIN_OILER_PUMP;  // how long the pump should run in one intervall
+double chain_oiler_voltage = STD_CHAIN_OILER_VOLTAGE; // needs to be tested. Determines if the engine is running
 unsigned long timeSinceChainOiler = 0;
-double chain_oiler_trigger_voltage = 13.2; // needs to be tested. Determines if the engine is running
 
 //**** setup code
 void setup()   {
@@ -115,6 +132,8 @@ void setup()   {
 
   timeSinceChainOiler = millis(); // skip the first run of the chain oiler.
                                   // Nobody wants to spill oil in the garage
+
+  readSettings();  // read settings if saved previously
 }
 
 //**** loop code
@@ -124,8 +143,8 @@ void loop() {
 if(timeSinceChainOiler + chain_oiler_wait <= millis()) {
   timeSinceChainOiler = millis();
   if ( chain_oiler_active) {
-    if (readVoltage() >= chain_oiler_trigger_voltage) {
-      triggerChainOiler(chain_oiler_pump_time);
+    if (readVoltage() >= chain_oiler_voltage) {
+      triggerChainOiler(chain_oiler_pump);
     } else {
       if (INFO_LOG >= GBL_LOGLEVEL) {
         Serial.print(F("I: Chain oiler voltage ("));
@@ -142,7 +161,7 @@ if(timeSinceChainOiler + chain_oiler_wait <= millis()) {
 }
 
 // main display update routine
-if (millis() - timeSinceMainDisplayRefresh >= intervalMainDisplayRefresh) {
+if (millis() - timeSinceMainDisplayRefresh >= INTERVAL_MAIN_DISPLAY_REFRESH) {
   timeSinceMainDisplayRefresh = millis();  // reset it here to avoid the 50 ms delay of the display
   
   display.clearDisplay();
@@ -273,11 +292,13 @@ void enterMenuPage() {
   // Not at the top, because a user does not really needs to change this values
   // menuTyps
   // 0 first page
-  #define MENU_FIRST_PAGE_ITEMS_COUNT 3
+  #define MENU_FIRST_PAGE_ITEMS_COUNT 4
   // 10 chain oiler
   #define MENU_CHAIN_OILER_ITEMS_COUNT 6
   // 20 clock 
   #define MENU_CLOCK_ITEMS_COUNT 3
+  // 90 reset all settings
+  #define MENU_RESET_SETTINGS_ITEMS_COUNT 2
 
   byte menuTyp = 0;
 
@@ -314,94 +335,124 @@ void enterMenuPage() {
   display.clearDisplay();
   
     switch(menuTyp) {
-      case 0:   // main menu      
-      menu_item_count = MENU_FIRST_PAGE_ITEMS_COUNT;  // dealing with the menu hops
-      // Headline
-      display.setCursor(0,0 - menuOffset);
-      display.setTextSize(1);
-      display.println(F("Hauptmenue"));
+      case 0:   // main menu
+      // found a bug maybe?
+      // without the extra {} that create extra scopse the sketch won't compile
+      // i do not double use variables in different cases
+      // the error appears when somewhere in a case a string is initialized (not matter what name it has)
+      // the error always appears afte case 20
+      { 
+        menu_item_count = MENU_FIRST_PAGE_ITEMS_COUNT;  // dealing with the menu hops
+        // Headline
+        display.setCursor(0,0 - menuOffset);
+        display.setTextSize(1);
+        display.println(F("Hauptmenue"));
+      
+        // Menu points
+        display.setTextSize(1);
+        display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 0 - menuOffset);
+        display.print(F("Kettenoeler"));
+      
+        display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 1 - menuOffset);
+        display.print(F("Uhrzeit"));
+      
+        display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 2 - menuOffset);
+        display.print(F("Zuruecksetzen"));
     
-      // Menu points
-      display.setTextSize(1);
-      display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 0 - menuOffset);
-      display.print(F("Kettenoeler"));
-    
-      display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 1 - menuOffset);
-      display.print(F("Uhrzeit"));
-    
-      display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 2 - menuOffset);
-      display.print(F("Zurueck"));
- 
+        display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 3 - menuOffset);
+        display.print(F("Zurueck"));
+      }
       break;
 
       case 10:  // chain oiler menu
-      menu_item_count = MENU_CHAIN_OILER_ITEMS_COUNT;
-
-      // Headline
-      display.setCursor(0,0 - menuOffset);
-      display.setTextSize(1);
-      display.print(F("Kettenoeler"));
-
-      // display wait and pump time on the right side
-      display.setCursor(96,0);  // no menuOffset here. We need to see what we change
-      display.print(chain_oiler_wait/1000);
-      display.print('s');
-
-      display.setCursor(96,8);
-      display.print(chain_oiler_pump_time);
-      display.print(F("ms"));
+      {
+        menu_item_count = MENU_CHAIN_OILER_ITEMS_COUNT;
   
-       // Menu points
-      display.setTextSize(1);
-      display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 0 - menuOffset);
-      display.print(F("Status:"));
-      if(chain_oiler_active) {
-        display.print(F("aktiv"));
-      } else {
-        display.print(F("inaktiv"));
-      }
+        // Headline
+        display.setCursor(0,0 - menuOffset);
+        display.setTextSize(1);
+        display.print(F("Kettenoeler"));
+  
+        // display wait and pump time on the right side
+        display.setCursor(96,0);  // no menuOffset here. We need to see what we change
+        display.print(chain_oiler_wait/1000);
+        display.print('s');
+  
+        display.setCursor(96,8);
+        display.print(chain_oiler_pump);
+        display.print(F("ms"));
+    
+         // Menu points
+        display.setTextSize(1);
+        display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 0 - menuOffset);
+        display.print(F("Status:"));
+        if(chain_oiler_active) {
+          display.print(F("aktiv"));
+        } else {
+          display.print(F("inaktiv"));
+        }
+        
+        display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 1 - menuOffset);
+        display.print(F("Wartezeit +30s"));
       
-      display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 1 - menuOffset);
-      display.print(F("Wartezeit +30s"));
-    
-      display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 2 - menuOffset);
-      display.print(F("Wartezeit -30s"));
-
-      display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 3 - menuOffset);
-      display.print(F("Interval +10ms"));
-
-      display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 4 - menuOffset);
-      display.print(F("Interval -10ms"));
-    
-      display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 5 - menuOffset);
-      display.print(F("Zurueck"));
+        display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 2 - menuOffset);
+        display.print(F("Wartezeit -30s"));
+  
+        display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 3 - menuOffset);
+        display.print(F("Interval +10ms"));
+  
+        display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 4 - menuOffset);
+        display.print(F("Interval -10ms"));
+      
+        display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 5 - menuOffset);
+        display.print(F("Zurueck"));
+      }
       break;
 
-      case 20:  // clock menu
-      menu_item_count = MENU_CLOCK_ITEMS_COUNT;
-      
-      // Headline
-      display.setCursor(0,0 - menuOffset);
-      display.print(F("Uhrzeit"));
+      case 20:  // clock menu 
+      {
+        menu_item_count = MENU_CLOCK_ITEMS_COUNT;
+        
+        // Headline
+        display.setCursor(0,0 - menuOffset);
+        display.print(F("Uhrzeit"));
+        
+        // display time on the right side. Horizontal
+        String tempSettingsTime = DS3131rtc.getTimeStr();
+        display.setCursor(100,8);
+        display.print(tempSettingsTime.substring(0,2));
+        display.print('H');
+        display.setCursor(100,16);
+        display.print(tempSettingsTime.substring(3,5));
+        display.print('M');
+        display.setCursor(100,24);
+        display.print(tempSettingsTime.substring(6));
+        display.print('S');
+      }
+      break;
 
-      // display time on the right side. Horizontal
-      String tempTimeString = DS3131rtc.getTimeStr();
-      display.setCursor(100,8);
-      display.print(tempTimeString.substring(0,2));
-      display.print('H');
-      display.setCursor(100,16);
-      display.print(tempTimeString.substring(3,5));
-      display.print('M');
-      display.setCursor(100,24);
-      display.print(tempTimeString.substring(6));
-      display.print('S');
-      
+      case 90: // reset settings menu
+      {
+        menu_item_count = MENU_RESET_SETTINGS_ITEMS_COUNT;
+
+        // Headline
+        display.setCursor(0,0 - menuOffset);
+        display.print(F("Einstellungen zurücksetzen"));
+    
+        // to be sure the user really wants to reset all data
+        display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 0 - menuOffset);
+        display.print(F("Wirklich zuruecksetzen?"));
+    
+        display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 1 - menuOffset);
+        display.print(F("Zurueck"));
+      }
       break;
     }
 
     // print the menu pointer
     display.setCursor(0, MENU_FIRST_ENTRY + menu_Pointer_Location * MENU_ENTRY_HEIGHT - menuOffset);
     display.print((char)175);
+    
 
     display.display();
 
@@ -422,9 +473,14 @@ void enterMenuPage() {
           menuTyp = 20;
           menu_Pointer_Location = 0;
           break;
-          case 2:
+          case 2:  // reset settings
+          menuTyp = 90;
+          menu_Pointer_Location = 0;
+          break;
+          case 3:
           exitMenu = true;
           break;
+          
         }        
         break;
 
@@ -446,16 +502,17 @@ void enterMenuPage() {
           }
           break;
           case 3:  // inc pump time
-          chain_oiler_pump_time += 10;
+          chain_oiler_pump += 10;
           break;
           case 4:  // dec pump time
-          if(chain_oiler_pump_time > 10) {
-            chain_oiler_pump_time -= 10;
+          if(chain_oiler_pump > 10) {
+            chain_oiler_pump -= 10;
           }
           break;
           case 5:  // back to menu
           menuTyp = 0;
           menu_Pointer_Location = 0;
+          saveSettings();
           break;
         }
         break;
@@ -468,10 +525,29 @@ void enterMenuPage() {
             break;
           }
         break;
+
+        case 90:  // reset settings menu
+        switch(menu_Pointer_Location) {
+            case 0:
+            chain_oiler_active = STD_CHAIN_OILER_ACTIVE;
+            chain_oiler_wait = STD_CHAIN_OILER_WAIT;
+            chain_oiler_pump = STD_CHAIN_OILER_PUMP;
+            chain_oiler_voltage = STD_CHAIN_OILER_VOLTAGE;
+            for (int i = 0; i < EEPROM.length(); i++) {
+              EEPROM.update(i,255);
+            }
+            saveSettings();
+            break;
+            case 1:
+            menuTyp = 0;
+            menu_Pointer_Location = 0;
+            break;
+          }
+        break;
       }
 
       // else check for a short press
-    } else if (button_1_hold >= 50) {
+    } else if (button_1_hold > 50 && button_1_hold < 200) {
       menu_Pointer_Location++;    // increase the menupointer
       if (menu_Pointer_Location >= menu_item_count){  // check if the menuPointer is over the actual count of the menuItems
         // keep in mind that "human" counting starts at 1, but the menu_Pointer_Location starts at 0
@@ -583,6 +659,79 @@ unsigned int getButtonHoldTime(byte buttonPIN) {
   return millis() - startTime;
 }
 
+
+
+struct chain_Oiler_data_t {
+  boolean active;
+  unsigned long wait_Time;
+  unsigned int pump_Time;
+};
+
+union chain_Oiler_Save_t {
+  chain_Oiler_data_t data;
+  byte byteArray[7];
+};
+
+// SAVE THE SETTINGS
+// all settings which are made in the menu are saved to EEPROM
+// clock settings do not need to be saved separately
+// the EEPROM can only be written bytewise
+void saveSettings() {
+  // EEPROM.update to save some write cycles
+
+  // save the record_present check some for versioning control
+  EEPROM.update(RECORD_PRESENT_ADDR, RECORD_PRESENT_VALUE_0);
+  EEPROM.update(RECORD_PRESENT_ADDR+1, RECORD_PRESENT_VALUE_1);
+
+  chain_Oiler_Save_t chain_Oiler_Save;
+  chain_Oiler_Save.data.active = chain_oiler_active;
+  chain_Oiler_Save.data.wait_Time = chain_oiler_wait;
+  chain_Oiler_Save.data.pump_Time = chain_oiler_pump;
+   
+  for (byte i = 0; i<7; i++) {
+    EEPROM.update(RECORD_CHAIN_OILER_ADDR + i, chain_Oiler_Save.byteArray[i]);
+    Serial.print(i);
+    Serial.print('.');
+    Serial.println(chain_Oiler_Save.byteArray[i], BIN);
+  }
+
+  Serial.println('*');
+
+  Serial.println(chain_Oiler_Save.data.active, BIN);
+  Serial.println(chain_Oiler_Save.data.wait_Time, BIN);
+  Serial.println(chain_Oiler_Save.data.pump_Time, BIN);
+}
+
+// READ THE SETTINGS
+// performs a check if there is usefull data in the EEPROM
+// and reads the data from EEPROM
+boolean readSettings() {
+  if (INFO_LOG >= GBL_LOGLEVEL) {
+    Serial.println(F("I: Trying to read settings from EEPROM"));
+  }
+  if(EEPROM.read(RECORD_PRESENT_ADDR) == RECORD_PRESENT_VALUE_0 && EEPROM.read(RECORD_PRESENT_ADDR) == RECORD_PRESENT_VALUE_1) {
+    chain_Oiler_Save_t chain_Oiler_Save;
+
+    for (byte i = 0; i<7; i++) {
+      chain_Oiler_Save.byteArray[i] = EEPROM.read(RECORD_CHAIN_OILER_ADDR + i);
+    }
+    Serial.println(chain_Oiler_Save.data.active);
+    Serial.println(chain_Oiler_Save.data.wait_Time);
+    Serial.println(chain_Oiler_Save.data.pump_Time);
+    chain_oiler_active = chain_Oiler_Save.data.active;
+    chain_oiler_wait = chain_Oiler_Save.data.wait_Time;
+    chain_oiler_pump = chain_Oiler_Save.data.pump_Time;
+    
+    //Serial.println(temp_chain_oiler_wait);
+    if (INFO_LOG >= GBL_LOGLEVEL) {
+      Serial.print(F("I: Settings read successfully from EEPROM"));
+    }
+  } else {
+    if (ERROR_LOG >= GBL_LOGLEVEL) {
+      Serial.print(F("I: No valid settings in EEPROM"));
+    }
+  }
+}
 
 // LOGOUTPUT
 // 0: Verbos
