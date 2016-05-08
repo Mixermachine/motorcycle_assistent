@@ -89,7 +89,7 @@ byte DS18B20addr[8];
 
 //* DS3231 clock chip
 // define the PINS for the clock.
-DS3231 DS3131rtc(A4,A5); // first SDA_PIN, second SCL_PIN on DS3231
+DS3231 DS3231rtc(A4,A5); // first SDA_PIN, second SCL_PIN on DS3231
 
 //* chain oiler timings
 boolean chain_oiler_active = STD_CHAIN_OILER_ACTIVE;
@@ -104,7 +104,10 @@ void setup()   {
   //* initialize Serial connection
   Serial.begin(250000);
   //*
+  pinMode(4,OUTPUT);
+  digitalWrite(4,HIGH);
 
+  delay(10);
   //* initialize Display
   // initialize with the I2C addr 0x3C / mit I2C-Adresse 0x3c initialisieren
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
@@ -116,7 +119,6 @@ void setup()   {
       Serial.println(F("E: Tempsensor not found"));
     }
   } else {
-
     if(INFO_LOG >= GBL_LOGLEVEL) {
       Serial.print(F("temp sensor is good addr: "));
       for(byte i = 0; i < 8; i++) {
@@ -127,7 +129,7 @@ void setup()   {
     }
   }
   //* initialize DS2131 clock chip
-  DS3131rtc.begin();
+  DS3231rtc.begin();
   //*
 
   timeSinceChainOiler = millis(); // skip the first run of the chain oiler.
@@ -154,10 +156,9 @@ if(timeSinceChainOiler + chain_oiler_wait <= millis()) {
     }
   } else {
     if (INFO_LOG >= GBL_LOGLEVEL) {
-      Serial.print(F("I: Chain oiler timer, but chain oiler is deactivated"));
+      Serial.println(F("I: Chain oiler timer triggered, but chain oiler is set inactive"));
     }
-  } 
-  
+  }   
 }
 
 // main display update routine
@@ -170,12 +171,14 @@ if (millis() - timeSinceMainDisplayRefresh >= INTERVAL_MAIN_DISPLAY_REFRESH) {
   // display temperatur
   display.setTextSize(2);
   display.setCursor(0,0);
-  display.println(String(readTemperatur(),1) + "C");     // takes about 23 - 24 ms
+  display.print(readTemperatur(),1);     // takes about 23 - 24 ms
+  display.println('C');
 
   // display voltage
   display.setTextSize(2);
   String voltageTempString = String(readVoltage(),1)+"V";  //  takes about 3 - 4 ms
-  if (voltageTempString.length() == 4) {
+  // determining if the voltage value length is 4 or 5 digits long
+  if (voltageTempString.length() == 4) {    
     display.setCursor(80,0);
   } else {
     display.setCursor(68,0);
@@ -185,21 +188,24 @@ if (millis() - timeSinceMainDisplayRefresh >= INTERVAL_MAIN_DISPLAY_REFRESH) {
   // display date
   display.setTextSize(1);
   display.setCursor(0,25);
-  display.println(DS3131rtc.getDateStr());  // takes about 3 - 4 ms
+  display.println(DS3231rtc.getDateStr());  // takes about 3 - 4 ms
 
   // display time
   display.setCursor(80,25);
-  String tempTimeString = DS3131rtc.getTimeStr();
+  char* tempTimeString = DS3231rtc.getTimeStr();
   display.println(tempTimeString);  // takes about 3 - 4 ms
 
-  byte tempHourArray[2];
-  tempTimeString.getBytes(tempHourArray,3); // this is somehow weird... with 2 instead of 3 the second digit does not get read
+  // *workMark*
+  //byte tempHourArray[2];
+  //tempHourArray[0] = tempTimeString[0];
+  //tempHourArray[1] = tempTimeString[1];
+  //tempTimeString.getBytes(tempHourArray,3); // this is somehow weird... with 2 instead of 3 the second digit does not get read
 
   // check if the display need to be dimmed
   // ASCII
   // 48 == 0
   // 49 == 1 ...
-  if(tempHourArray[0] == 50 && tempHourArray[1] >= 48 && tempHourArray[1] <= 52) { 
+  /*if(tempHourArray[0] == 50 && tempHourArray[1] >= 48 && tempHourArray[1] <= 52) { 
     // if first digit of the current hour is 2
     // and second digit of the current hour is between 0 and 4 (keep it easy to edit)
     if (VERBOUS_LOG >= GBL_LOGLEVEL) {
@@ -219,13 +225,29 @@ if (millis() - timeSinceMainDisplayRefresh >= INTERVAL_MAIN_DISPLAY_REFRESH) {
       Serial.println(F("V: Display not dimmed"));
     }
     display.dim(false);    
-  }
-
-  /*if(byte(tempTimeString.substring(0,1)) > 20 || byte(tempTimeString.substring(0,1)) < 8) {
-    display.dim(true);
-  } else {
-    display.dim(false);
   } */
+
+  if(tempTimeString[0] == 50 && tempTimeString[1] >= 48 && tempTimeString[1] <= 52) { 
+    // if first digit of the current hour is 2
+    // and second digit of the current hour is between 0 and 4 (keep it easy to edit)
+    if (VERBOUS_LOG >= GBL_LOGLEVEL) {
+      Serial.println(F("V: Display dimmed"));
+    }
+    display.dim(true); // dim display
+
+  } else if(tempTimeString[0] == 48 && tempTimeString[1] >= 48 && tempTimeString[1] <= 56) {
+     // if first digit of the current hour is 0
+     // if second digit of the current hour is between 0 and 8 (keep it easy to edit)
+     if(VERBOUS_LOG >= GBL_LOGLEVEL) {
+      Serial.println(F("V: Display dimmed"));
+     }
+     display.dim(true); // dim display
+  } else {
+    if(VERBOUS_LOG >= GBL_LOGLEVEL) {
+      Serial.println(F("V: Display not dimmed"));
+    }
+    display.dim(false);    
+  }
   
   display.display();
 }
@@ -238,6 +260,7 @@ if (millis() - timeSinceMainButtonCheck >= INTERVAL_MAIN_BUTTON_CHECK) {
   timeSinceMainButtonCheck = millis();
   
   // the button needs to pressed for a certain time before a action is triggerd (to prevent false input)
+  // this can't be done by any other method. The display should get updated even if the button is pressed
   if(analogRead(BUTTON_1) > BUTTON_TRIGGER_VALUE) {
     mainButtonCounter++;
 
@@ -287,6 +310,9 @@ if (millis() - timeSinceMainButtonCheck >= INTERVAL_MAIN_BUTTON_CHECK) {
 // So, not that pretty stuff here, but it's functional
 void enterMenuPage() {
   boolean exitMenu = false;
+
+  // is needed to wait for the user
+  boolean firstPageDisplay = false;
   
   // Menu defines.
   // Not at the top, because a user does not really needs to change this values
@@ -296,7 +322,7 @@ void enterMenuPage() {
   // 10 chain oiler
   #define MENU_CHAIN_OILER_ITEMS_COUNT 6
   // 20 clock 
-  #define MENU_CLOCK_ITEMS_COUNT 3
+  #define MENU_CLOCK_ITEMS_COUNT 13
   // 90 reset all settings
   #define MENU_RESET_SETTINGS_ITEMS_COUNT 2
 
@@ -325,7 +351,7 @@ void enterMenuPage() {
 
   display.display();
 
-  while(analogRead(BUTTON_1) >= BUTTON_TRIGGER_VALUE) {} // wait for user to release button
+  getButtonHoldTime(BUTTON_1, false);  // simply wait for the user to release the button
 
   // printig the menu in a loop and handling the button
   while(!exitMenu){
@@ -336,8 +362,8 @@ void enterMenuPage() {
   
     switch(menuTyp) {
       case 0:   // main menu
-      // found a bug maybe?
-      // without the extra {} that create extra scopse the sketch won't compile
+      // found a bug in the compiler code maybe?
+      // without the extra {} which creates an extra scope the sketch won't compile
       // i do not double use variables in different cases
       // the error appears when somewhere in a case a string is initialized (not matter what name it has)
       // the error always appears afte case 20
@@ -416,18 +442,81 @@ void enterMenuPage() {
         // Headline
         display.setCursor(0,0 - menuOffset);
         display.print(F("Uhrzeit"));
+
+        if(menu_Pointer_Location < 6) {
+          // display time on the right side. Horizontal
+          char* tempSettingsTime = DS3231rtc.getTimeStr();
+          display.setCursor(100,8);
+          display.print(tempSettingsTime[0]);
+          display.print(tempSettingsTime[1]);
+          display.print('H');
+          display.setCursor(100,16);
+          display.print(tempSettingsTime[3]);
+          display.print(tempSettingsTime[4]);
+          display.print('M');
+          display.setCursor(100,24);
+          display.print(tempSettingsTime[6]);
+          display.print(tempSettingsTime[7]);
+          display.print('S');
+        } else {
+          char* tempSettingsDate = DS3231rtc.getDateStr();
+          
+          display.setCursor(100,8);
+          display.print(tempSettingsDate[0]);
+          display.print(tempSettingsDate[1]);
+          display.print('D');
+          display.setCursor(100,16);
+          display.print(tempSettingsDate[3]);
+          display.print(tempSettingsDate[4]);
+          display.print('M');
+          display.setCursor(90,24);
+          display.print(tempSettingsDate[6]);
+          display.print(tempSettingsDate[7]);
+          display.print(tempSettingsDate[8]);
+          display.print(tempSettingsDate[9]);
+          display.print('Y');
+        }
         
-        // display time on the right side. Horizontal
-        String tempSettingsTime = DS3131rtc.getTimeStr();
-        display.setCursor(100,8);
-        display.print(tempSettingsTime.substring(0,2));
-        display.print('H');
-        display.setCursor(100,16);
-        display.print(tempSettingsTime.substring(3,5));
-        display.print('M');
-        display.setCursor(100,24);
-        display.print(tempSettingsTime.substring(6));
-        display.print('S');
+
+        display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 0 - menuOffset);
+        display.print(F("+5 sek"));
+
+        display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 1 - menuOffset);
+        display.print(F("-5 sek"));
+      
+        display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 2 - menuOffset);
+        display.print(F("+1 min"));
+  
+        display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 3 - menuOffset);
+        display.print(F("-1 min"));
+  
+        display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 4 - menuOffset);
+        display.print(F("+1 std"));
+      
+        display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 5 - menuOffset);
+        display.print(F("-1 std"));
+        
+        display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 6 - menuOffset);
+        display.print(F("+1 tag"));
+        
+        display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 7 - menuOffset);
+        display.print(F("-1 tag"));
+        
+        display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 8 - menuOffset);
+        display.print(F("+1 mon"));
+        
+        display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 9 - menuOffset);
+        display.print(F("-1 mon"));
+        
+        display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 10 - menuOffset);
+        display.print(F("+1 jahr"));
+        
+        display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 11 - menuOffset);
+        display.print(F("-1 jahr"));
+        
+        display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 12 - menuOffset);
+        display.print(F("Zurueck"));
+        
       }
       break;
 
@@ -458,7 +547,15 @@ void enterMenuPage() {
 
   // action section
   // get the input from the user
-    unsigned int button_1_hold = getButtonHoldTime(BUTTON_1);
+  // if this is the first display of a new menuPage then wait for the user to release the button
+    unsigned int button_1_hold = 0;
+    if (firstPageDisplay) {
+      getButtonHoldTime(BUTTON_1, false);
+      firstPageDisplay = false;
+    } else {
+      button_1_hold = getButtonHoldTime(BUTTON_1, true);
+    }
+    
     // first find out if the button was a long press
     // reusing the predefined value for the button long press trigger (100ms * 10ms) = 1000 ms
     if(button_1_hold >= INTERVAL_MAIN_BUTTON_CHECK * MAIN_BUTTON_COUNTER_TRIGGER) {
@@ -468,14 +565,17 @@ void enterMenuPage() {
           case 0:  // enter chain oiler menu
           menuTyp = 10;
           menu_Pointer_Location = 0;
+          firstPageDisplay = true;
           break;
           case 1:  // enter clock menu
           menuTyp = 20;
           menu_Pointer_Location = 0;
+          firstPageDisplay = true;
           break;
           case 2:  // reset settings
           menuTyp = 90;
           menu_Pointer_Location = 0;
+          firstPageDisplay = true;
           break;
           case 3:
           exitMenu = true;
@@ -513,6 +613,7 @@ void enterMenuPage() {
           menuTyp = 0;
           menu_Pointer_Location = 0;
           saveSettings();
+          firstPageDisplay = true;
           break;
         }
         break;
@@ -520,9 +621,46 @@ void enterMenuPage() {
         case 20:  // clock menu
           switch(menu_Pointer_Location) {
             case 0:
+              alterTime(0,0,0,0,0,+5);
             break;
             case 1:
+              alterTime(0,0,0,0,0,-5);
             break;
+            case 2:
+              alterTime(0,0,0,0,+1,0);
+            break;
+            case 3:
+              alterTime(0,0,0,0,-1,0);
+            break;
+            case 4:
+              alterTime(0,0,0,+1,0,0);
+            break;
+            case 5:
+              alterTime(0,0,0,-1,0,0);
+            break;
+            case 6:
+              alterTime(0,0,+1,0,0,0);
+            break;
+            case 7:
+              alterTime(0,0,-1,0,0,0);
+            break;
+            case 8:
+              alterTime(0,+1,0,0,0,0);
+            break;
+            case 9:
+              alterTime(0,-1,0,0,0,0);
+            break;
+            case 10:
+              alterTime(+1,0,0,0,0,0);
+            break;
+            case 11:
+              alterTime(-1,0,0,0,0,0);
+            break;
+            case 12:
+              menuTyp = 0;
+              menu_Pointer_Location = 0;
+              firstPageDisplay = true;
+            break;            
           }
         break;
 
@@ -533,7 +671,7 @@ void enterMenuPage() {
             chain_oiler_wait = STD_CHAIN_OILER_WAIT;
             chain_oiler_pump = STD_CHAIN_OILER_PUMP;
             chain_oiler_voltage = STD_CHAIN_OILER_VOLTAGE;
-            for (int i = 0; i < EEPROM.length(); i++) {
+            for (uint16_t i = 0; i < EEPROM.length(); i++) {
               EEPROM.update(i,255);
             }
             saveSettings();
@@ -541,6 +679,7 @@ void enterMenuPage() {
             case 1:
             menuTyp = 0;
             menu_Pointer_Location = 0;
+            firstPageDisplay = true;
             break;
           }
         break;
@@ -572,13 +711,13 @@ void enterMenuPage() {
 
   display.display();
 
-  while(analogRead(BUTTON_1) >= BUTTON_TRIGGER_VALUE) { } // waiting for the user to release the button
+  getButtonHoldTime(BUTTON_1, false);  // simply wait for the user to release the button
 }
 
 // READ TEMPERATUR TASK
 // adapted from https://edwardmallon.wordpress.com/2014/03/12/using-a-ds18b20-temp-sensor-without-a-dedicated-library/
 // this version does NOT work with the parasite mod. Big benefit here: no delay
-// reduced code to a minimum. No options.
+// reduced code to a minimum. No options. Save space. Do the necessary.
 // Just read the value and convert it to float. For what do we need the Dalas lib again ;)?
 float readTemperatur() {
   byte data[12];
@@ -606,7 +745,7 @@ float readTemperatur() {
 }
 
 // READ VOLTAGE TASK
-// reads the voltage and does the voltage divider math
+// reads the raw voltage and does the voltage divider math
 // Pin_Voltage / (R2 / (R1 + R2))  (there are no unnecessary brackets ;)  )
 // connect voltagePin to point between R1 and R2
 // R1 is connected to positiv and R2, R2 is connected to R1 and GND
@@ -625,7 +764,7 @@ float readVoltage() {
 // CHAIN OILER TASK
 //It's critical that NOTHING interupts this task.
 //So lets do a delay here else this could be interupted and 
-//the chain oiler keeps pumping oil (which is NO god ;)  )
+//the chain oiler keeps pumping oil (which is NO good ;)  )
 void triggerChainOiler(unsigned int openTime) {
   if (INFO_LOG >= GBL_LOGLEVEL) {
     Serial.print(F("I: Chain oiler is on for "));
@@ -645,18 +784,127 @@ void triggerChainOiler(unsigned int openTime) {
 // GET BUTTON HOLD TIME TASK
 // loops while a given button at buttonPIN is pressed down
 // on release it returns the time it looped
-unsigned int getButtonHoldTime(byte buttonPIN) {
+// the boolean decides if the method returns after a long press is
+// recorded or continues to count (wait for the user to release
+unsigned int getButtonHoldTime(byte buttonPIN, bool returnAfterLongPress) {
   unsigned long startTime = millis();
   while (analogRead(buttonPIN) >= BUTTON_TRIGGER_VALUE) {   
-    // this could be done more efficient, but why?
-    // The arduino always runs at the same speed with the same power usage
-    // this loop gets passed VERY often. So no difference here
-    if (millis() - startTime > INTERVAL_MAIN_BUTTON_CHECK * MAIN_BUTTON_COUNTER_TRIGGER) { // calculating time for a long click
+    // wait for the user to release button
+    // or return after the time it takes for a long press
+    // This way the user can simply hold the button and trigger multiple long presses
+    if (returnAfterLongPress && millis() - startTime > INTERVAL_MAIN_BUTTON_CHECK * MAIN_BUTTON_COUNTER_TRIGGER) { // calculating time for a long click
       return millis() - startTime;  // if the time is already over, why should we count on?
     }
   }
 
   return millis() - startTime;
+}
+
+// ALTER THE TIME ON THE RTC-CHIP
+// this changes the time according to the values it gets
+// a value for yearA of -1 will decress the year by one
+// this methode will handle the "flip" of numbers (59 + 1 = 0 seconds -> +1 minute)
+// and the different amount of days in a month
+// Yes, this methode can fail. Putting 120 in secondA will produce nonsense
+// But this case will never happen in this sketch
+// Additional checks cost flash memory and CPU cycles, so lets save those
+// Limit for the input values are the "normal" limits.
+// There are not more than 59 seconds for example. 60 seconds are 1 minute
+void alterTime(int8_t yearA, int8_t monthA, int8_t dayA, int8_t hourA, int8_t minuteA, int8_t secondA){
+
+  // get current time + date
+  char* tempHourTime = DS3231rtc.getTimeStr();
+  char* tempDateTime = DS3231rtc.getDateStr();
+  
+  int16_t yearN = yearA + (tempDateTime[6]-48) * 1000 + (tempDateTime[7]-48) * 100 + (tempDateTime[8]-48) * 10 + (tempDateTime[9]-48);
+  int8_t monthN = monthA + (tempDateTime[3]-48) * 10 + (tempDateTime[4]-48);
+  int8_t dayN = dayA + (tempDateTime[0]-48) * 10 + (tempDateTime[1]-48);
+  int8_t hourN = hourA + (tempHourTime[0]-48) * 10 + (tempHourTime[1]-48);
+  int8_t minuteN = minuteA + (tempHourTime[3]-48) * 10 + (tempHourTime[4]-48);
+  int8_t secondN = secondA + (tempHourTime[6]-48) * 10 + (tempHourTime[7]-48);
+  int8_t allowedDays[] = {31,28,31,30,31,30,31,31,30,31,30,31};
+
+  
+  
+  // find logic "flips" of time variables
+  if(secondN>59) {
+    secondN = secondN - 60;
+    minuteN++;
+  } else if (secondN < 0) {
+    secondN = secondN + 60;
+    minuteN--;
+  }
+
+  if(minuteN>59) {
+    minuteN = minuteN - 60;
+    hourN ++;
+  } else if (minuteN < 0) {
+    minuteN = minuteN + 60;
+    hourN--;
+  }
+
+  if (hourN>23) {
+    hourN -= 24;
+    dayN++;
+  } else if (hourN<0) {
+    hourN += 24;
+    dayN--;
+  }
+
+  // the month defines the amount of days
+  // if there are 12 monthN and 40 dayN,
+  // then monthN will be increased, resulting in 13 monthN
+  // -> rerole
+  // if we rerole with a new month the limit of days can be different
+  // so we need a do while loop
+  bool dayCountValid;
+  do {
+    
+    if (monthN<1) {
+      monthN+=12;
+      yearN--;
+    } else if (monthN>12) {
+      monthN-=12;
+      yearN++;
+    }
+  
+    if (dayN > allowedDays[monthN-1]) {
+      dayN -= allowedDays[monthN-1];
+      monthN++;
+      dayCountValid = false;
+    } else if (dayN <1) {
+      // prevent array outOfBounds
+      if(monthN == 1) {
+        dayN += allowedDays[11];
+      } else {
+        dayN += allowedDays[monthN-2];
+      }
+      monthN--;
+      dayCountValid = false;
+    } else {
+          dayCountValid = true;
+    }
+  } while (!dayCountValid); 
+
+  DS3231rtc.setTime(hourN,minuteN,secondN);
+  DS3231rtc.setDate(dayN,monthN,yearN);
+
+  if (INFO_LOG >= GBL_LOGLEVEL) {
+    Serial.println(F("I: Time set to"));
+    Serial.print(F("time: "));
+    Serial.print(hourN);
+    Serial.print(':');
+    Serial.print(minuteN);
+    Serial.print(':');
+    Serial.println(secondN);
+  
+    Serial.print(F("date: "));
+    Serial.print(dayN);
+    Serial.print('.');
+    Serial.print(monthN);
+    Serial.print('.');
+    Serial.println(yearN);
+  }
 }
 
 
@@ -705,30 +953,36 @@ void saveSettings() {
 // READ THE SETTINGS
 // performs a check if there is usefull data in the EEPROM
 // and reads the data from EEPROM
-boolean readSettings() {
+void readSettings() {
   if (INFO_LOG >= GBL_LOGLEVEL) {
     Serial.println(F("I: Trying to read settings from EEPROM"));
   }
+  
   if(EEPROM.read(RECORD_PRESENT_ADDR) == RECORD_PRESENT_VALUE_0 && EEPROM.read(RECORD_PRESENT_ADDR) == RECORD_PRESENT_VALUE_1) {
     chain_Oiler_Save_t chain_Oiler_Save;
 
     for (byte i = 0; i<7; i++) {
       chain_Oiler_Save.byteArray[i] = EEPROM.read(RECORD_CHAIN_OILER_ADDR + i);
     }
-    Serial.println(chain_Oiler_Save.data.active);
-    Serial.println(chain_Oiler_Save.data.wait_Time);
-    Serial.println(chain_Oiler_Save.data.pump_Time);
+    
     chain_oiler_active = chain_Oiler_Save.data.active;
     chain_oiler_wait = chain_Oiler_Save.data.wait_Time;
     chain_oiler_pump = chain_Oiler_Save.data.pump_Time;
     
     //Serial.println(temp_chain_oiler_wait);
     if (INFO_LOG >= GBL_LOGLEVEL) {
-      Serial.print(F("I: Settings read successfully from EEPROM"));
+      Serial.println(F("I: Settings read successfully from EEPROM"));
+      Serial.print(F("I: Read pump_active= "));
+      Serial.println(chain_Oiler_Save.data.active);
+      Serial.print(F("I: Read wait_time= "));
+      Serial.println(chain_Oiler_Save.data.wait_Time);
+      Serial.print(F("I: Read pump_time= "));
+      Serial.println(chain_Oiler_Save.data.pump_Time);
     }
+
   } else {
     if (ERROR_LOG >= GBL_LOGLEVEL) {
-      Serial.print(F("I: No valid settings in EEPROM"));
+      Serial.print(F("E: No valid settings in EEPROM"));
     }
   }
 }
