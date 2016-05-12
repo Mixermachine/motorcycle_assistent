@@ -77,5 +77,8 @@ If the voltage is equal or above 12V the Arduino will wake up and return to the 
 This project does focus on the highest efficiency possible.<br />
 The Atmel328 chip (Arduino Uno, Mini,...) provides 32kb of flash memory and 2 kb of ram.<br />
 I could not always focus on clean code, but tried to keep the code well sorted and well commented.<br />
+Flash memory and RAM efficiency was the main goal.<br />
+The code offers log. Change GBL_LOGLEVEL to a value which you like. (0 verbous, 1 info, 2 warning, 3 error).<br />
+This project nearly uses the hole flash memory (state 2016-05-13 I use 27 108 Byte of the flash memory).<br />
 
 Please send me a message before you use this Arduino project for a commercial product.<br />
