@@ -19,7 +19,15 @@
 #include <EEPROM.h>
 //*
 
+// include for the power saving sleep library
+#include <LowPower.h>
+//*
+
 //**** DEFINES
+//* define power pin to switch the external chips
+#define POWER_PIN_EXTERNAL 7 
+//*
+
 //* define for Screen
 //#define OLED_RESET 4 // not used here/ nicht genutzt bei diesem Display
 Adafruit_SSD1306 display(0); // the value is not important
@@ -28,13 +36,14 @@ Adafruit_SSD1306 display(0); // the value is not important
 //*
 
 //* define for DS18B20 temperature sensor
-#define DS18B20_PIN 2 // PIN for temp sensor
+#define DS18B20_PIN 4 // PIN for temp sensor
 //*
 
 //* define for the voltageDeviderPins and resistorValue
 #define VOLTAGE_PIN A0
 #define VOLTAGE_RESISTOR1 9400
 #define VOLTAGE_RESISTOR2 4700
+#define VOLTAGE_POWERDOWN 12
 //*
 
 //* define for the buttonPins
@@ -54,7 +63,7 @@ Adafruit_SSD1306 display(0); // the value is not important
 //*
 
 //* define for the logs
-#define GBL_LOGLEVEL 0   // set log level here
+#define GBL_LOGLEVEL 1   // set log level here
 #define VERBOUS_LOG 0
 #define INFO_LOG 1
 #define WARNING_LOG 2
@@ -70,6 +79,14 @@ Adafruit_SSD1306 display(0); // the value is not important
 //*
 
 //**** GLOBAL VARIABLES
+//* power state variables
+bool currentExternalPower = false;
+unsigned long timeFirstLowVoltage = 0;
+uint16_t timeCranking = 0;  // about 65 seconds should be enough time ;)
+float lowestCrankVoltage = 0;
+float measuredVoltage = 0;
+uint16_t timeToWaitPowerDown = 20000; // in milliseconds
+
 //* timing variables
 // Main display refresh
 unsigned long timeSinceMainDisplayRefresh = 0;  //
@@ -104,33 +121,8 @@ void setup()   {
   //* initialize Serial connection
   Serial.begin(250000);
   //*
-  pinMode(4,OUTPUT);
-  digitalWrite(4,HIGH);
 
-  delay(10);
-  //* initialize Display
-  // initialize with the I2C addr 0x3C / mit I2C-Adresse 0x3c initialisieren
-  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
-  //*
-
-  //* initialize DS18B20 temperature sensor
-  if (!DS18B20ds.search(DS18B20addr)) {
-    if(ERROR_LOG >= GBL_LOGLEVEL) {
-      Serial.println(F("E: Tempsensor not found"));
-    }
-  } else {
-    if(INFO_LOG >= GBL_LOGLEVEL) {
-      Serial.print(F("temp sensor is good addr: "));
-      for(byte i = 0; i < 8; i++) {
-        Serial.print(DS18B20addr[i],HEX);
-        Serial.print(' ');
-      }
-      Serial.print('\n');
-    }
-  }
-  //* initialize DS2131 clock chip
-  DS3231rtc.begin();
-  //*
+  powerManager(true);
 
   timeSinceChainOiler = millis(); // skip the first run of the chain oiler.
                                   // Nobody wants to spill oil in the garage
@@ -141,164 +133,206 @@ void setup()   {
 //**** loop code
 void loop() {
 
-// chain oiler routine
-if(timeSinceChainOiler + chain_oiler_wait <= millis()) {
-  timeSinceChainOiler = millis();
-  if ( chain_oiler_active) {
-    if (readVoltage() >= chain_oiler_voltage) {
-      triggerChainOiler(chain_oiler_pump);
-    } else {
-      if (INFO_LOG >= GBL_LOGLEVEL) {
-        Serial.print(F("I: Chain oiler voltage ("));
-        Serial.print(readVoltage());
-        Serial.println(F(") to low"));
-      }
-    }
-  } else {
+// meassuring voltage and checking for low voltage power down or cranking
+
+  measuredVoltage = readVoltage();
+  if(measuredVoltage <= VOLTAGE_POWERDOWN) {
+    // detected low voltage. Can be low battery or cranking
+    unsigned long timeFirstCrank = millis();
+
     if (INFO_LOG >= GBL_LOGLEVEL) {
-      Serial.println(F("I: Chain oiler timer triggered, but chain oiler is set inactive"));
+          Serial.println(F("I: Low voltage detected"));
     }
-  }   
-}
+    // think of the cranking first
+    // Crank assistent
+    lowestCrankVoltage = measuredVoltage;
+    while (measuredVoltage < VOLTAGE_POWERDOWN && (millis() - timeFirstCrank) < timeToWaitPowerDown) {
+      if (measuredVoltage < lowestCrankVoltage){ // loop till voltage is higher or voltage is low for a longer time
+          lowestCrankVoltage = measuredVoltage;
 
-// main display update routine
-if (millis() - timeSinceMainDisplayRefresh >= INTERVAL_MAIN_DISPLAY_REFRESH) {
-  timeSinceMainDisplayRefresh = millis();  // reset it here to avoid the 50 ms delay of the display
-  
-  display.clearDisplay();
-  display.setTextColor(WHITE);
-  
-  // display temperatur
-  display.setTextSize(2);
-  display.setCursor(0,0);
-  display.print(readTemperatur(),1);     // takes about 23 - 24 ms
-  display.println('C');
+          // notify user of a new lowest value
+          // this takes about 30 ms
+          display.clearDisplay();
+          display.setTextColor(WHITE);
+          display.setTextSize(2);
+          display.setCursor(0,0);
+          display.println(F("Starten"));
+          
+          display.setTextSize(1);
+          display.println(F("Niedrigste Spannung"));
+          
+          display.print(measuredVoltage,1);
+          display.print('V');
+          display.display();
 
-  // display voltage
-  display.setTextSize(2);
-  String voltageTempString = String(readVoltage(),1)+"V";  //  takes about 3 - 4 ms
-  // determining if the voltage value length is 4 or 5 digits long
-  if (voltageTempString.length() == 4) {    
-    display.setCursor(80,0);
-  } else {
-    display.setCursor(68,0);
-  }                  
-  display.println(voltageTempString);
-
-  // display date
-  display.setTextSize(1);
-  display.setCursor(0,25);
-  display.println(DS3231rtc.getDateStr());  // takes about 3 - 4 ms
-
-  // display time
-  display.setCursor(80,25);
-  char* tempTimeString = DS3231rtc.getTimeStr();
-  display.println(tempTimeString);  // takes about 3 - 4 ms
-
-  // *workMark*
-  //byte tempHourArray[2];
-  //tempHourArray[0] = tempTimeString[0];
-  //tempHourArray[1] = tempTimeString[1];
-  //tempTimeString.getBytes(tempHourArray,3); // this is somehow weird... with 2 instead of 3 the second digit does not get read
-
-  // check if the display need to be dimmed
-  // ASCII
-  // 48 == 0
-  // 49 == 1 ...
-  /*if(tempHourArray[0] == 50 && tempHourArray[1] >= 48 && tempHourArray[1] <= 52) { 
-    // if first digit of the current hour is 2
-    // and second digit of the current hour is between 0 and 4 (keep it easy to edit)
-    if (VERBOUS_LOG >= GBL_LOGLEVEL) {
-      Serial.println(F("V: Display dimmed"));
-    }
-    display.dim(true); // dim display
-
-  } else if(tempHourArray[0] == 48 && tempHourArray[1] >= 48 && tempHourArray[1] <= 56) {
-     // if first digit of the current hour is 0
-     // if second digit of the current hour is between 0 and 8 (keep it easy to edit)
-     if(VERBOUS_LOG >= GBL_LOGLEVEL) {
-      Serial.println(F("V: Display dimmed"));
-     }
-     display.dim(true); // dim display
-  } else {
-    if(VERBOUS_LOG >= GBL_LOGLEVEL) {
-      Serial.println(F("V: Display not dimmed"));
-    }
-    display.dim(false);    
-  } */
-
-  if(tempTimeString[0] == 50 && tempTimeString[1] >= 48 && tempTimeString[1] <= 52) { 
-    // if first digit of the current hour is 2
-    // and second digit of the current hour is between 0 and 4 (keep it easy to edit)
-    if (VERBOUS_LOG >= GBL_LOGLEVEL) {
-      Serial.println(F("V: Display dimmed"));
-    }
-    display.dim(true); // dim display
-
-  } else if(tempTimeString[0] == 48 && tempTimeString[1] >= 48 && tempTimeString[1] <= 56) {
-     // if first digit of the current hour is 0
-     // if second digit of the current hour is between 0 and 8 (keep it easy to edit)
-     if(VERBOUS_LOG >= GBL_LOGLEVEL) {
-      Serial.println(F("V: Display dimmed"));
-     }
-     display.dim(true); // dim display
-  } else {
-    if(VERBOUS_LOG >= GBL_LOGLEVEL) {
-      Serial.println(F("V: Display not dimmed"));
-    }
-    display.dim(false);    
-  }
-  
-  display.display();
-}
-
-// button check routine
-// counts up if button is presse
-// switches to menu if counts hit a certain level
-
-if (millis() - timeSinceMainButtonCheck >= INTERVAL_MAIN_BUTTON_CHECK) {
-  timeSinceMainButtonCheck = millis();
-  
-  // the button needs to pressed for a certain time before a action is triggerd (to prevent false input)
-  // this can't be done by any other method. The display should get updated even if the button is pressed
-  if(analogRead(BUTTON_1) > BUTTON_TRIGGER_VALUE) {
-    mainButtonCounter++;
-
-    // if trigger is reached enter menu
-    if(mainButtonCounter >= MAIN_BUTTON_COUNTER_TRIGGER) {
-      if(INFO_LOG >= GBL_LOGLEVEL) {
-        Serial.println(F("I: Entering Menu"));
-      }
-      enterMenuPage();
-      mainButtonCounter= 0;  // resseting the counter
+        }
+        measuredVoltage = readVoltage();
     }
     
-  } else {
-    mainButtonCounter = 0;
-  }
-}
+    
+    // if the low voltage is still present, go to sleep
+    if ((millis() - timeFirstCrank) >= timeToWaitPowerDown) {
+      if (INFO_LOG >= GBL_LOGLEVEL) {
+          Serial.println(F("I: Low voltage continues"));
+          Serial.println(F("I: Entering power saving mode"));
+      }
+      
+      // Power saving mode
+      powerManager(false);
 
-      //Serial.println(analogRead(BUTTON_1));
+      while(readVoltage() < VOLTAGE_POWERDOWN) {
 
-      //delay(1000);
-  /*if (displayTimerCompareValue == displayTimer)
-  {
+        // Power saving mode
+        // wake up each two second to check the voltage.
+        // sleep time could be lower but to remain a little responsive,
+        // two seconds will do
+        LowPower.powerDown(SLEEP_2S, ADC_OFF, BOD_OFF);
+      }
+      if (INFO_LOG >= GBL_LOGLEVEL) {
+          Serial.println(F("I: Voltage is good again"));
+      }
+      powerManager(true);      
+      
+    } else {
+      // if it was a simple crank, wait one second to give the user some time
+      // to view the displayed value
+      if (INFO_LOG >= GBL_LOGLEVEL) {
+          Serial.println(F("I: Low voltage was cranking"));
+          Serial.print(F("I: Crank lowest voltage="));
+          Serial.println(lowestCrankVoltage,1);
+          Serial.print(F("I: Crank durration="));
+          Serial.println(millis() - timeFirstCrank);
+          Serial.flush();  
+          // we need to wait for the Serial data to be transfered
+          // else the log will be distorted
+      }
+      
+      LowPower.powerDown(SLEEP_1S,ADC_OFF,BOD_OFF);
 
+      // display the time the cranking toke
       display.clearDisplay();
       display.setTextColor(WHITE);
-      display.setTextSize(3);
-      display.setCursor(1,0);
-      display.dim(true);
+      display.setTextSize(2);
+      display.setCursor(0,0);
+      display.println(F("Starten"));
+      display.setTextSize(1);
+      display.println(F("Dauer"));
+      // the actual time isn't that accurate.
+      // the crank duration can differ.
+      // If the Arduino calcs the menu for example then the low voltage detection will be delayed
+      // Still it's usefull
+      display.print(millis() - timeFirstCrank -8); // it takes 8 ms from the end of the cranking loop till this is calced
+      display.print(F("ms"));
       display.display();
-      displayTimerCompareValue = 0;
-  }
-  else
-  {
-    displayTimerCompareValue++;
+      
+      LowPower.powerDown(SLEEP_1S,ADC_OFF,BOD_OFF);
+    }
   }
 
-
-  PWMPowerValue++;*/
+  // chain oiler routine
+  if(timeSinceChainOiler + chain_oiler_wait <= millis()) {
+    timeSinceChainOiler = millis();
+    if ( chain_oiler_active) {
+      if (readVoltage() >= chain_oiler_voltage) {
+        triggerChainOiler(chain_oiler_pump);
+      } else {
+        if (INFO_LOG >= GBL_LOGLEVEL) {
+          Serial.print(F("I: Chain oiler voltage ("));
+          Serial.print(readVoltage());
+          Serial.println(F(") to low"));
+        }
+      }
+    } else {
+      if (INFO_LOG >= GBL_LOGLEVEL) {
+        Serial.println(F("I: Chain oiler timer triggered, but chain oiler is set inactive"));
+      }
+    }   
+  }
+  
+  // main display update routine
+  if (millis() - timeSinceMainDisplayRefresh >= INTERVAL_MAIN_DISPLAY_REFRESH) {
+    timeSinceMainDisplayRefresh = millis();  // reset it here to avoid the 50 ms delay of the display
+    
+    display.clearDisplay();
+    display.setTextColor(WHITE);
+    
+    // display temperatur
+    display.setTextSize(2);
+    display.setCursor(0,0);
+    display.print(readTemperatur(),1);     // takes about 23 - 24 ms
+    display.println('C');
+  
+    // display voltage
+    display.setTextSize(2);
+    String voltageTempString = String(readVoltage(),1)+"V";  //  takes about 3 - 4 ms
+    // determining if the voltage value length is 4 or 5 digits long
+    if (voltageTempString.length() == 4) {    
+      display.setCursor(80,0);
+    } else {
+      display.setCursor(68,0);
+    }                  
+    display.println(voltageTempString);
+  
+    // display date
+    display.setTextSize(1);
+    display.setCursor(0,25);
+    display.println(DS3231rtc.getDateStr());  // takes about 3 - 4 ms
+  
+    // display time
+    display.setCursor(80,25);
+    char* tempTimeString = DS3231rtc.getTimeStr();
+    display.println(tempTimeString);  // takes about 3 - 4 ms
+  
+    if(tempTimeString[0] == 50 && tempTimeString[1] >= 48 && tempTimeString[1] <= 52) { 
+      // if first digit of the current hour is 2
+      // and second digit of the current hour is between 0 and 4 (keep it easy to edit)
+      if (VERBOUS_LOG >= GBL_LOGLEVEL) {
+        Serial.println(F("V: Display dimmed"));
+      }
+      display.dim(true); // dim display
+  
+    } else if(tempTimeString[0] == 48 && tempTimeString[1] >= 48 && tempTimeString[1] <= 56) {
+       // if first digit of the current hour is 0
+       // if second digit of the current hour is between 0 and 8 (keep it easy to edit)
+       if(VERBOUS_LOG >= GBL_LOGLEVEL) {
+        Serial.println(F("V: Display dimmed"));
+       }
+       display.dim(true); // dim display
+    } else {
+      if(VERBOUS_LOG >= GBL_LOGLEVEL) {
+        Serial.println(F("V: Display not dimmed"));
+      }
+      display.dim(false);    
+    }
+    
+    display.display();
+  }
+  
+  // button check routine
+  // counts up if button is presse
+  // switches to menu if counts hit a certain level
+  
+  if (millis() - timeSinceMainButtonCheck >= INTERVAL_MAIN_BUTTON_CHECK) {
+    timeSinceMainButtonCheck = millis();
+    
+    // the button needs to pressed for a certain time before a action is triggerd (to prevent false input)
+    // this can't be done by any other method. The display should get updated even if the button is pressed
+    if(analogRead(BUTTON_1) > BUTTON_TRIGGER_VALUE) {
+      mainButtonCounter++;
+  
+      // if trigger is reached enter menu
+      if(mainButtonCounter >= MAIN_BUTTON_COUNTER_TRIGGER) {
+        if(INFO_LOG >= GBL_LOGLEVEL) {
+          Serial.println(F("I: Entering Menu"));
+        }
+        enterMenuPage();
+        mainButtonCounter= 0;  // resseting the counter
+      }
+      
+    } else {
+      mainButtonCounter = 0;
+    }
+  }
 
 }
 
@@ -714,6 +748,61 @@ void enterMenuPage() {
   getButtonHoldTime(BUTTON_1, false);  // simply wait for the user to release the button
 }
 
+// POWER MANAGER
+// this methode manages to power or power down the external chips
+// DS3231 clock
+// SSD1306 display
+// DS18B20 temperatur
+// true turns power one and initializes the components, false turns power off
+void powerManager(boolean wantedState){
+
+  if(wantedState && !currentExternalPower) {
+    if(INFO_LOG >= GBL_LOGLEVEL) {
+      Serial.print(F("I: powering up external chips"));
+    }
+    pinMode(POWER_PIN_EXTERNAL,OUTPUT);
+    digitalWrite(POWER_PIN_EXTERNAL,HIGH);
+  
+    delay(10);
+    //* initialize Display
+    // initialize with the I2C addr 0x3C / mit I2C-Adresse 0x3c initialisieren
+    display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+    //*
+  
+    //* initialize DS18B20 temperature sensor
+    if (!DS18B20ds.search(DS18B20addr)) {
+      if(ERROR_LOG >= GBL_LOGLEVEL) {  
+        // if this runs more then one time it will print an error
+        // but the temperatur sensor will still work fine
+        Serial.println(F("E: Tempsensor not found"));
+      }
+    } else {
+      if(INFO_LOG >= GBL_LOGLEVEL) {
+        Serial.println(F("temp sensor is good addr: "));
+        for(byte i = 0; i < 8; i++) {
+          Serial.print(DS18B20addr[i],HEX);
+          Serial.print(' ');
+        }
+        Serial.print('\n');
+      }
+    }
+    //* initialize DS3231 clock chip
+    DS3231rtc.begin();
+    //*
+    currentExternalPower = true;
+  } else if(!wantedState && currentExternalPower) {
+    
+    if(INFO_LOG >=GBL_LOGLEVEL) {
+      Serial.println(F("I: powering down external sensors"));
+    }
+    
+    pinMode(POWER_PIN_EXTERNAL,OUTPUT);
+    digitalWrite(POWER_PIN_EXTERNAL,LOW);
+    
+    currentExternalPower = false;
+  }
+}
+
 // READ TEMPERATUR TASK
 // adapted from https://edwardmallon.wordpress.com/2014/03/12/using-a-ds18b20-temp-sensor-without-a-dedicated-library/
 // this version does NOT work with the parasite mod. Big benefit here: no delay
@@ -986,108 +1075,5 @@ void readSettings() {
     }
   }
 }
-
-// LOGOUTPUT
-// 0: Verbos
-// 1: Info
-// 2: Warning
-// 3: Error
-/*void logOutput(byte level, String msg) {
-  if(level >= GBL_LOGLEVEL)
-  {
-    switch(level){
-      case 0:
-      msg = "V: " + msg;
-      break;      
-      case 1:
-      msg = "I: " + msg;
-      break;      
-      case 2:
-      msg = "W: " + msg;
-      break;      
-      case 3:
-      msg = "E: " + msg;
-      break;      
-      default:
-      break;
-    }
-      Serial.println(msg);
-  }
-}*/
-  /*
-
-  display.clearDisplay();
-
-  // set text color / Textfarbe setzen
-  display.setTextColor(WHITE);
-  // set text size / Textgroesse setzen
-  display.setTextSize(1);
-  // set text cursor position / Textstartposition einstellen
-  display.setCursor(1,0);
-  // show text / Text anzeigen
-  display.println("OLED - Display - Test");
-  display.setCursor(14,56);
-  display.println("blog.simtronyx.de");
-  display.setTextSize(2);
-  display.setCursor(34,15);
-  display.println("Hello");
-  display.setCursor(30,34);
-  display.println("World!");
-  display.display();
-  delay(1000);
-
-
-  // invert the display / Display invertieren
-  display.invertDisplay(true);
-  delay(2000);
-  display.invertDisplay(false);
-  delay(1000);
-
-  // draw some random pixel / zufaellige Pixel anzeigen
-  for(i=0;i<380;i++){
-    display.drawPixel(random(128),random(64), WHITE);
-    display.display();
-  }
-  delay(DRAW_DELAY);
-  display.clearDisplay();
-
-  // draw some random lines / zufaellige Linien anzeigen
-  for(i=0;i<D_NUM;i++){
-    display.drawLine(random(128),random(64),random(128),random(64), WHITE);
-    display.display();
-    delay(DRAW_DELAY);
-    display.clearDisplay();
-  }
-
-  // draw some random triangles / zufaellige Dreiecke anzeigen
-  for(i=0;i<D_NUM;i++){
-    if(random(2))display.drawTriangle(random(128),random(64),random(128),random(64), random(128),random(64), WHITE); // normal
-    else display.fillTriangle(random(128),random(64),random(128),random(64), random(128),random(64), WHITE);     // filled / ausgefuellt
-    display.display();
-    delay(DRAW_DELAY);
-    display.clearDisplay();
-  }
-
-  // draw some random rectangles / zufaellige Rechtecke anzeigen
-  for(i=0;i<D_NUM;i++){
-    int rnd=random(4);
-    if(rnd==0)display.drawRect(random(88),random(44),random(40),random(20), WHITE);               // normal
-    else if(rnd==1)display.fillRect(random(88),random(44),random(40),random(20), WHITE);            // filled / ausgefuellt
-    else if(rnd==2)display.drawRoundRect(random(88),random(44),random(30)+10,random(15)+5,random(5), WHITE);  // normal with rounded edges / normal mit abgerundeten Ecken
-    else display.fillRoundRect(random(88),random(44),random(30)+10,random(15)+5,random(5), WHITE);        // filled with rounded edges / ausgefuellt mit  mit abgerundeten Ecken
-    display.display();
-    delay(DRAW_DELAY);
-    display.clearDisplay();
-  }
-
-  // draw some random circles / zufaellige Kreise anzeigen
-  for(i=0;i<D_NUM;i++){
-    if(random(2))display.drawCircle(random(88)+20,random(44)+20,random(10), WHITE); // normal
-    else display.fillCircle(random(88)+20,random(44)+20,random(10), WHITE);     // filled / ausgefuellt
-    display.display();
-    delay(DRAW_DELAY);
-    display.clearDisplay();
-  }*/
-
 
 
