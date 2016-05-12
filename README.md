@@ -1,12 +1,12 @@
 # Motorcycle Assistent
 
 ## Describtion
-I created this project to equipe my BMW F650 GS motorcycle with a digital chain oiler.
-To control it I added a display, some other chips and one button.
-This project is still in the alpha phase.
-The program variables, log and comments are all written in englisch.
-The user interface is designed for German users.
-It works on the Arduino/Genuino Nano and Arduino/Genuino Uno
+I created this project to equipe my BMW F650 GS motorcycle with a digital chain oiler.<br />
+To control it I added a display, some other chips and one button.<br />
+This project is still in the alpha phase.<br />
+The program variables, log and comments are all written in englisch.<br />
+The user interface is designed for German users.<br />
+It works on the Arduino/Genuino Nano and Arduino/Genuino Uno<br />
 
 ## Hardware:
 + Arduino nano/uno   (Uno for development, Nano for actual use in my motorcycle)
@@ -35,15 +35,16 @@ It works on the Arduino/Genuino Nano and Arduino/Genuino Uno
 + Display date and time (dim display accourding to the time)
 + Provide a menu for the settings
 + Power saving mode
++ Crank assistent (shows lowest voltage and the duration)
 
 ## Chain oiler
-The chain oiler can be trimmed to you needs.
-The pump duration time, interval time and the state (if it should work at all) can be easily set in the menu.
-All settings are saved in the internal memory (EEPROM) and will be loaded at each power up.
-The chain oiler will only work if the battery voltage is above 13,2V.
-This is no technical limitation, but a safety one.
-On my F650 I needed to grab power from the rear lights, so when I leave my bike with parking lights on, the Arduino is still powered.
-If the engine is running, the generator will hold the voltage at 13,5V to 14,2V -> chain oiler will run if active.
+The chain oiler can be trimmed to you needs.<br />
+The pump duration time, interval time and the state (if it should work at all) can be easily set in the menu.<br />
+All settings are saved in the internal memory (EEPROM) and will be loaded at each power up.<br />
+The chain oiler will only work if the battery voltage is above 13,2V.<br />
+This is no technical limitation, but a safety one.<br />
+On my F650 I needed to grab power from the rear lights, so when I leave my bike with parking lights on, the Arduino is still powered.<br />
+If the engine is running, the generator will hold the voltage at 13,5V to 14,2V -> chain oiler will run if active.<br />
 
 ## Typical display faces
 ![Alt text](/img/mainPage.jpg?raw=true "Main page")
@@ -52,29 +53,29 @@ After a long click on the button (1 second, state 2016-05-12) the menu will open
 
 ![Alt text](/img/mainMenu.jpg?raw=true "Main menu")
 
-With a short click on the button you move the cursor one step down (on the last entry it will jump up again).
-With a long click on the button you enter subMenus and select options.
-As long you are in the menu the chain oiler will not run.
+With a short click on the button you move the cursor one step down (on the last entry it will jump up again).<br />
+With a long click on the button you enter subMenus and select options.<br />
+As long you are in the menu the chain oiler will not run.<br />
 
 ## Voltage regulator and power saving
-I recommend to replace the onboard voltage regulator with one which has less quiescent current (current which the regulator needs for it self) if you really want to use the power saving mode. 
-The standard one uses about 10 mA and requiers at least 7V to produce a good 5V line for the Arduino. 
-The MCP1703 for example only uses only 0.003 mA for itself and requiers 0,1V to 0,6V extra above the 5V for the Arduino to work properly.
-DC-DC converters do not really make sense here.
-Although the converter would be more efficient in the normal work mode, it would be horrible in power saving mode (because it also has a fairly high quiescent current). We don't really need a high efficiency if the engine is running.
-To decrease the comsumption even more, disconnect the power LED of the Arduino.
+I recommend to replace the onboard voltage regulator with one which has less quiescent current (current which the regulator needs for it self) if you really want to use the power saving mode. <br />
+The standard one uses about 10 mA and requiers at least 7V to produce a good 5V line for the Arduino. <br />
+The MCP1703 for example only uses only 0.003 mA for itself and requiers 0,1V to 0,6V extra above the 5V for the Arduino to work properly. <br />
+DC-DC converters do not really make sense here.<br />
+Although the converter would be more efficient in the normal work mode, it would be horrible in power saving mode (because it also has a fairly high quiescent current). We don't really need a high efficiency if the engine is running (about 50mA in normal mode). <br />
+To decrease the comsumption even more, disconnect the power LED of the Arduino.<br />
 
-So if you use the MCP1703 and remove the power LED from the Arduino it will be much more efficient.
-The current should be under 0,1 mA. (Needs testing)
-The power saving mode will kick in if the voltage is under 12V for longer then 20 seconds.
-It will turn of the power of the display, clock and temperatur sensor.
-Every 2 seconds the Arduino will wake up for under 1 milliSecond to check the voltage.
-If the voltage is equal or above 12V the Arduino will wake up and return to the normal work mode.
+So if you use the MCP1703 and remove the power LED from the Arduino it will be much more efficient.<br />
+The current should be under 0,1 mA. (Needs testing)<br />
+The power saving mode will kick in if the voltage is under 12V for longer then 20 seconds.<br />
+It will turn of the power of the display, clock and temperatur sensor.<br />
+Every 2 seconds the Arduino will wake up for under 1 milliSecond to check the voltage.<br />
+If the voltage is equal or above 12V the Arduino will wake up and return to the normal work mode.<br />
 
 
 ## Developer stuff
-This project does focus on the highest efficiency possible.
-The Atmel328 chip (Arduino Uno, Mini,...) provides 32kb of flash memory and 2 kb of ram.
-I could not always focus on clean code, but tried to keep the code well sorted and well commented.
+This project does focus on the highest efficiency possible.<br />
+The Atmel328 chip (Arduino Uno, Mini,...) provides 32kb of flash memory and 2 kb of ram.<br />
+I could not always focus on clean code, but tried to keep the code well sorted and well commented.<br />
 
-Please send me a message before you use this Arduino project for a commercial product.
+Please send me a message before you use this Arduino project for a commercial product.<br />
