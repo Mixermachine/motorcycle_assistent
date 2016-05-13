@@ -172,9 +172,10 @@ void loop() {
     
     // if the low voltage is still present, go to sleep
     if ((millis() - timeFirstCrank) >= timeToWaitPowerDown) {
-      if (INFO_LOG >= GBL_LOGLEVEL) {
+      if (WARNING_LOG >= GBL_LOGLEVEL) {
           Serial.println(F("I: Low voltage continues"));
           Serial.println(F("I: Entering power saving mode"));
+          Serial.flush(); // wait for the serial data to be transmited before sleeping
       }
       
       // Power saving mode
@@ -188,6 +189,7 @@ void loop() {
         // two seconds will do
         LowPower.powerDown(SLEEP_2S, ADC_OFF, BOD_OFF);
       }
+      
       if (INFO_LOG >= GBL_LOGLEVEL) {
           Serial.println(F("I: Voltage is good again"));
       }
