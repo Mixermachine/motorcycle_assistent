@@ -373,6 +373,9 @@ void enterMenuPage() {
   byte menu_Pointer_Location = 0;
   byte menuOffset = 0;  // moves the hole menu up to display new stuff. Dealing with the small display
 
+  // is true if the last press was registered as a long press
+  // will be set to false after the next check
+  boolean lastPressLong = false;
 
 
   // Print a reminder message, to not use the menu while driving
@@ -562,11 +565,11 @@ void enterMenuPage() {
 
         // Headline
         display.setCursor(0,0 - menuOffset);
-        display.print(F("Einstellungen zurücksetzen"));
+        display.print(F("Zuruecksetzen"));
     
         // to be sure the user really wants to reset all data
         display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 0 - menuOffset);
-        display.print(F("Wirklich zuruecksetzen?"));
+        display.print(F("Sicher zuruecksetzen"));
     
         display.setCursor(MENU_POINTER_GAB,MENU_FIRST_ENTRY + MENU_ENTRY_HEIGHT * 1 - menuOffset);
         display.print(F("Zurueck"));
@@ -703,6 +706,7 @@ void enterMenuPage() {
         case 90:  // reset settings menu
         switch(menu_Pointer_Location) {
             case 0:
+            // reset the values to standard
             chain_oiler_active = STD_CHAIN_OILER_ACTIVE;
             chain_oiler_wait = STD_CHAIN_OILER_WAIT;
             chain_oiler_pump = STD_CHAIN_OILER_PUMP;
@@ -711,7 +715,9 @@ void enterMenuPage() {
               EEPROM.update(i,255);
             }
             saveSettings();
-            break;
+
+            // return to higher menu level after reset
+            //break;
             case 1:
             menuTyp = 0;
             menu_Pointer_Location = 0;
@@ -721,14 +727,25 @@ void enterMenuPage() {
         break;
       }
 
+      lastPressLong = true;
       // else check for a short press
-    } else if (button_1_hold > 50 && button_1_hold < 200) {
-      menu_Pointer_Location++;    // increase the menupointer
-      if (menu_Pointer_Location >= menu_item_count){  // check if the menuPointer is over the actual count of the menuItems
-        // keep in mind that "human" counting starts at 1, but the menu_Pointer_Location starts at 0
+    } else {
+        // prevent hoping "forward" if the last press was registered as a long press
+        // If the user pressed maybe for 1100 ms.
+        // Then long press would be triggered but also short press
+        // If we simply "cancel" one check for short press with a boolean (lastPressLong)
+        // This way the menu is rendered once without a short press check after a long press
+        if (!lastPressLong && button_1_hold > 50 && button_1_hold < 200) {
+        menu_Pointer_Location++;    // increase the menupointer
+        if (menu_Pointer_Location >= menu_item_count){  // check if the menuPointer is over the actual count of the menuItems
+          // keep in mind that "human" counting starts at 1, but the menu_Pointer_Location starts at 0
         menu_Pointer_Location = 0;     
+        }        
       }
+      // reenable short press check
+      lastPressLong = false; 
     }
+    
 
     // calculate the menuOffset to move the complete menu upwards, showing new stuff at the buttom
     if (menu_Pointer_Location >= MENU_OFFSET_MOVE_TRIGGER) {
