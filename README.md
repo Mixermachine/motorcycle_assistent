@@ -84,11 +84,15 @@ It will turn of the power of the display, clock and temperature sensor.<br />
 Every 2 seconds the Arduino will wake up for under 1 millisecond to check the voltage.<br />
 If the voltage is equal or above 12V the Arduino will wake up and return to the normal work mode.<br />
 
+## Schematic
+
+![Alt text](/img/fritzingScreenshot.jpg?raw=true "Fritzing Schematic") <br />
+
 
 ## Developer stuff
 This project does focus on the highest efficiency possible.<br />
 The Atmel328 chip (Arduino Uno, Mini,...) provides 32kb of flash memory and 2 kb of ram.<br />
-I could not always focus on clean code, but tried to keep the code well sorted and well commented.<br />
+I could not always focus on best practice code, but tried to keep the work well sorted and well commented.<br />
 Flash memory and RAM efficiency was the main goal.<br />
 The code offers the possibility of logging via the serial connection of the Arduino.<br />
 Change GBL_LOGLEVEL to a value which you like. (0 verbous, 1 info, 2 warning, 3 error).<br />
