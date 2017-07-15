@@ -19,11 +19,11 @@ I could provide a interface for Englisch users if there is a need for it.<br />
 It runs on the Arduino/Genuino Nano and Arduino/Genuino Uno<br />
 
 ## Features:
-+ Triggers the chain oiler pump after a given periode of time for a little interval
-+ Displays temperature
-+ Displays battery voltage
-+ Displays date and time (dim display accourding to the time)
-+ Provides a menu for the settings
++ Trigger the chain oiler pump after a given periode of time for a little interval
++ Display temperature
++ Display battery voltage
++ Display date and time (dim display accourding to the time)
++ Provide a menu for the settings
 + Power saving mode
 + Crank assistent (shows lowest voltage and the duration)
 
@@ -41,7 +41,7 @@ It runs on the Arduino/Genuino Nano and Arduino/Genuino Uno<br />
 + SPI.h (screen)
 + Wire.h (screen and clock)
 + Adafruit_GFX.h (screen)
-+ Adafruit_SSD1306.h (clock)
++ Adafruit_SSD1306.h (screen)
 + OneWire.h (temperature)
 + DS3231.h (clock)
 + EEPROM.h (EEPROM memory)
@@ -84,11 +84,15 @@ It will turn of the power of the display, clock and temperature sensor.<br />
 Every 2 seconds the Arduino will wake up for under 1 millisecond to check the voltage.<br />
 If the voltage is equal or above 12V the Arduino will wake up and return to the normal work mode.<br />
 
+## Schematic
+
+![Alt text](/img/fritzingScreenshot.jpg?raw=true "Fritzing Schematic") <br />
+
 
 ## Developer stuff
 This project does focus on the highest efficiency possible.<br />
 The Atmel328 chip (Arduino Uno, Mini,...) provides 32kb of flash memory and 2 kb of ram.<br />
-I could not always focus on clean code, but tried to keep the code well sorted and well commented.<br />
+I could not always focus on best practice code, but tried to keep the work well sorted and well commented.<br />
 Flash memory and RAM efficiency was the main goal.<br />
 The code offers the possibility of logging via the serial connection of the Arduino.<br />
 Change GBL_LOGLEVEL to a value which you like. (0 verbous, 1 info, 2 warning, 3 error).<br />
