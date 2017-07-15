@@ -19,11 +19,11 @@ I could provide a interface for Englisch users if there is a need for it.<br />
 It runs on the Arduino/Genuino Nano and Arduino/Genuino Uno<br />
 
 ## Features:
-+ Triggers the chain oiler pump after a given periode of time for a little interval
-+ Displays temperature
-+ Displays battery voltage
-+ Displays date and time (dim display accourding to the time)
-+ Provides a menu for the settings
++ Trigger the chain oiler pump after a given periode of time for a little interval
++ Display temperature
++ Display battery voltage
++ Display date and time (dim display accourding to the time)
++ Provide a menu for the settings
 + Power saving mode
 + Crank assistent (shows lowest voltage and the duration)
 
@@ -41,7 +41,7 @@ It runs on the Arduino/Genuino Nano and Arduino/Genuino Uno<br />
 + SPI.h (screen)
 + Wire.h (screen and clock)
 + Adafruit_GFX.h (screen)
-+ Adafruit_SSD1306.h (clock)
++ Adafruit_SSD1306.h (screen)
 + OneWire.h (temperature)
 + DS3231.h (clock)
 + EEPROM.h (EEPROM memory)
