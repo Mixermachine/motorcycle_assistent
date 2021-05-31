@@ -99,5 +99,4 @@ Change GBL_LOGLEVEL to a value which you like. (0 verbous, 1 info, 2 warning, 3 
 This project nearly uses the hole flash memory.<br />
 (state 2016-05-13, 27 148 Byte of the flash memory is used).<br />
 
-Please send me a message before you use this Arduino project for a commercial product.<br />
--> dietz1993@gmail.com
+Please open a issue here before you use this Arduino project for a commercial product.
